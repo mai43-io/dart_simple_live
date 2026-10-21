@@ -1,0 +1,44 @@
+name: Build TV APK
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          cache: true
+      - name: Fix Android SDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+
+      # ↓↓↓ 新增：自动生成签名文件 ↓↓↓
+      - name: Generate signing key
+        run: |
+          cd simple_live_tv_app/android/app
+          keytool -genkey -v -keystore app.keystore -keyalg RSA -keysize 2048 \
+            -validity 10000 -alias tvkey \
+            -storepass android -keypass android \
+            -dname "CN=TV, OU=Dev, O=Dev, L=BJ, S=BJ, C=CN"
+          cd ..
+          cat > key.properties <<EOF
+          storePassword=android
+          keyPassword=android
+          keyAlias=tvkey
+          storeFile=app.keystore
+          EOF
+
+      - name: Build TV debug APK
+        run: |
+          cd simple_live_tv_app
+          flutter pub get
+          flutter build apk --debug
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simple-live-tv-apk
+          path: simple_live_tv_app/build/app/outputs/flutter-apk/*.apk
